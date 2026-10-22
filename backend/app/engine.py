@@ -141,7 +141,8 @@ class Engine:
             msg = f"Stale data: newest candle {newest}, expected {d} (age {snap.age_hours:.1f}h). Not trading."
             add_alert("critical", "stale_data", msg)
             await self.notify("⚠️ " + msg, kind="alert")
-            return self._record_run(st, d, "blocked", {"reason": msg})
+            run = self._record_run(st, d, "blocked", {"reason": msg})
+            return {"status": "blocked", "run_id": run.id, "reason": msg}
 
         # 2. mark the live book
         sleeves = books.load_book(LIVE, p.tranches, st.capital_usdt)
@@ -180,7 +181,8 @@ class Engine:
         if st.paused and not manual:
             state["last_run_day"] = str(d)
             self.save_state(state)
-            return self._record_run(st, d, "skipped", {"reason": "paused"})
+            run = self._record_run(st, d, "skipped", {"reason": "paused"})
+            return {"status": "skipped", "run_id": run.id, "reason": "paused"}
 
         # 5. which sleeves trade today
         due = sorted({k for k in range(p.tranches) if (d.toordinal() - k) % p.rebalance_days == 0}
