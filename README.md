@@ -49,7 +49,7 @@ next cycle. Commands: `/status /positions /report /leaderboard /pause /resume /k
 contacted directly (no proxy) unless you set one.
 
 ## Self-optimisation (shadow variants)
-Live parameters never change on their own (STRATEGY §7). The 12 variants (lookback 7/14/30 × k 3/5 × gate on/off)
+Live parameters never change on their own (STRATEGY §7). The 14 variants (lookback 7/14/30 × k 3/5 × gate on/off, plus the gated 7/14/30 rank-average combination for k 3/5)
 run as forward paper books with Nobitex costs. A switch is suggested only after 90 days and a Sharpe/return margin,
 and applied only when you approve it (Shadow page, or the button on the weekly Telegram suggestion). A weekly check also flags a short leg that is net-negative
 after position fees.

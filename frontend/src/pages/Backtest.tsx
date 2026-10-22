@@ -8,12 +8,13 @@ export default function Backtest() {
   const [lookback, setLookback] = useState(14);
   const [k, setK] = useState(5);
   const [gate, setGate] = useState(true);
+  const [combo, setCombo] = useState(false);
   const [res, setRes] = useState<any>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const run = async () => {
     setBusy(true); setErr("");
-    try { setRes(await api("/backtest", { body: { source, costs, params: { lookback, k, gate_on: gate } } })); } catch (e: any) { setErr(e.message); }
+    try { setRes(await api("/backtest", { body: { source, costs, params: { lookback, k, gate_on: gate, combo } } })); } catch (e: any) { setErr(e.message); }
     setBusy(false);
   };
   const merged = res ? res.equity.map((e: any, i: number) => ({ day: e.day, strategy: e.equity, btc: res.btc[i]?.equity })) : [];
@@ -22,8 +23,9 @@ export default function Backtest() {
       <div className="card flex flex-wrap items-end gap-3">
         <label className="text-xs">Data<select className="input" value={source} onChange={(e) => setSource(e.target.value)}><option value="binance">Binance research (survivorship-free)</option><option value="nobitex">Nobitex stored candles</option></select></label>
         <label className="text-xs">Costs<select className="input" value={costs} onChange={(e) => setCosts(e.target.value)}><option value="nobitex">Nobitex (fees + position fee)</option><option value="binance">Binance research model</option></select></label>
-        <label className="text-xs">Lookback<input className="input w-20" type="number" value={lookback} onChange={(e) => setLookback(+e.target.value)} /></label>
+        <label className="text-xs">Lookback<input className="input w-20" type="number" disabled={combo} value={lookback} onChange={(e) => setLookback(+e.target.value)} /></label>
         <label className="text-xs">k<input className="input w-16" type="number" value={k} onChange={(e) => setK(+e.target.value)} /></label>
+        <label className="text-xs"><input type="checkbox" checked={combo} onChange={(e) => setCombo(e.target.checked)} /> Combine 7/14/30</label>
         <label className="text-xs"><input type="checkbox" checked={gate} onChange={(e) => setGate(e.target.checked)} /> BTC gate</label>
         <button className="btn-primary" disabled={busy} onClick={run}>{busy ? "Running…" : "Run backtest"}</button>
       </div>

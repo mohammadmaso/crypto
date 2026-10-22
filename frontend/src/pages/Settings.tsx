@@ -88,7 +88,7 @@ export default function Settings() {
       </div>
 
       <div className="flex items-center gap-3"><button className="btn-primary" onClick={save}>Save settings</button><span className="break-all text-xs text-zinc-400">{msg}</span></div>
-      <div className="card text-xs text-zinc-400">Strategy parameters are frozen (L{f.strategy.lookback}, k={f.strategy.k}, gate {f.strategy.gate_on ? "on" : "off"}); change them only via an approved Shadow switch. API keys live in the project-root <code>.env</code>, never in this panel.</div>
+      <div className="card text-xs text-zinc-400">Strategy parameters are frozen ({f.strategy.combo ? "7/14/30 combined" : `L${f.strategy.lookback}`}, k={f.strategy.k}, gate {f.strategy.gate_on ? "on" : "off"}); change them only via an approved Shadow switch. API keys live in the project-root <code>.env</code>, never in this panel.</div>
     </div>
   );
 }

@@ -48,6 +48,7 @@ def secrets_for(mode: Mode) -> Secrets:
 class StrategyParams(BaseModel):
     """STRATEGY.md section 1. Frozen by design; changes only through an approved shadow switch."""
     lookback: int = 14
+    combo: bool = False          # rank-average of the 7/14/30-day momentums (PDF section 7); ignores `lookback`
     k: int = 5
     universe_size: int = 30
     min_history: int = 30
@@ -62,7 +63,7 @@ class StrategyParams(BaseModel):
 
     @property
     def label(self) -> str:
-        return f"L{self.lookback} k{self.k} {'gated' if self.gate_on else 'always-on'}"
+        return f"{'L7/14/30' if self.combo else f'L{self.lookback}'} k{self.k} {'gated' if self.gate_on else 'always-on'}"
 
 
 class RiskLimits(BaseModel):

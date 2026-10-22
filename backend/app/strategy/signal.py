@@ -23,6 +23,10 @@ class Features:
     mom: pd.DataFrame
     volrank: pd.DataFrame      # trailing mean quote volume (NaN where ineligible by history)
     gate: pd.Series            # BTC close > SMA(n)
+    moms: dict[int, pd.DataFrame] = field(default_factory=dict)   # one momentum frame per combo lookback
+
+
+COMBO_LOOKBACKS = (7, 14, 30)
 
 
 def clean_glitches(close: pd.DataFrame, hi: float = 4.0, lo: float = -0.9) -> pd.DataFrame:
@@ -43,7 +47,15 @@ def features(close: pd.DataFrame, qvol: pd.DataFrame, p: StrategyParams) -> Feat
         gate = btc > btc.rolling(p.gate_sma, min_periods=p.gate_sma).mean()
     else:
         gate = pd.Series(False, index=close.index)
-    return Features(close=close, mom=mom, volrank=vol, gate=gate)
+    moms = {L: close / close.shift(L) - 1 for L in COMBO_LOOKBACKS} if p.combo else {}
+    return Features(close=close, mom=mom, volrank=vol, gate=gate, moms=moms)
+
+
+def combo_score(f: Features, day, eligible: list[str]) -> pd.Series:
+    """Mean of the cross-sectional percentile ranks (within the eligible universe) of each lookback's momentum.
+    A coin needs all lookbacks available. Higher = stronger."""
+    cols = pd.DataFrame({L: m.loc[day, eligible] for L, m in f.moms.items()}).dropna()
+    return cols.rank(pct=True).mean(axis=1)
 
 
 @dataclass
@@ -73,7 +85,12 @@ def targets_for(f: Features, shortable, day, p: StrategyParams) -> Targets:
     out = Targets(day=day, gate=gate)
     eligible = eligible_universe(f, day, p.universe_size)
     out.eligible = eligible
-    mom = f.mom.loc[day, eligible].dropna() if eligible else pd.Series(dtype=float)
+    if not eligible:
+        mom = pd.Series(dtype=float)
+    elif p.combo:
+        mom = combo_score(f, day, eligible)
+    else:
+        mom = f.mom.loc[day, eligible].dropna()
     ranked = mom.sort_values(ascending=False, kind="mergesort")
     out.ranked = [(s, float(m)) for s, m in ranked.items()]
     if not gate or ranked.empty:
@@ -96,8 +113,10 @@ def sleeve_rebalances_on(day_index: int, sleeve: int, p: StrategyParams) -> bool
 
 
 def all_variants() -> list[StrategyParams]:
-    """The 12 variants from STRATEGY.md section 7 (3 lookbacks x 2 sizes x gate on/off)."""
-    return [StrategyParams(lookback=lb, k=k, gate_on=g) for lb in (7, 14, 30) for k in (3, 5) for g in (True, False)]
+    """The 12 variants from STRATEGY.md section 7 (3 lookbacks x 2 sizes x gate on/off) plus the gated
+    7/14/30 combination (PDF section 7) with k=3 and k=5."""
+    base = [StrategyParams(lookback=lb, k=k, gate_on=g) for lb in (7, 14, 30) for k in (3, 5) for g in (True, False)]
+    return base + [StrategyParams(combo=True, k=k) for k in (3, 5)]
 
 
 def nan_to_none(x: float) -> float | None:

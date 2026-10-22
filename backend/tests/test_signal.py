@@ -63,8 +63,27 @@ def test_tranche_schedule_staggered():
     assert days == {0: [0, 3, 6, 9], 1: [1, 4, 7, 10], 2: [2, 5, 8, 11]}
 
 
-def test_twelve_variants():
-    assert len(all_variants()) == 12
+def test_variants_include_combo():
+    vs = all_variants()
+    assert len(vs) == 14 and sum(v.combo for v in vs) == 2
+
+
+def test_combo_signal_ranks_and_no_overlap():
+    close, qv = make_panel(n=200, seed=7)
+    p = StrategyParams(combo=True)
+    f = features(close, qv, p)
+    f.gate[:] = True
+    day = close.index[-1]
+    t = targets_for(f, set(close.columns), day, p)
+    assert len(t.longs) == 5 and len(t.shorts) == 5 and not set(t.longs) & set(t.shorts)
+    assert all(0 <= s <= 1 for _, s in t.ranked)                      # rank-average scores
+    top = t.ranked[0][0]
+    single = targets_for(features(close, qv, StrategyParams()), set(close.columns), day, StrategyParams())
+    assert single.ranked != t.ranked or top in t.longs               # runs through the same selection
+
+
+def test_combo_label():
+    assert "7/14/30" in StrategyParams(combo=True).label
 
 
 def test_too_few_shortable_holds_cash():

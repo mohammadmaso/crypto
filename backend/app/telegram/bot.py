@@ -96,7 +96,7 @@ class TelegramService:
         if switch:
             markup = InlineKeyboardMarkup([[
                 InlineKeyboardButton("✅ Switch live parameters",
-                                     callback_data=f"sw:{switch['lookback']}:{switch['k']}:{int(switch['gate_on'])}"),
+                                     callback_data=f"sw:{switch['lookback']}:{switch['k']}:{int(switch['gate_on'])}:{int(switch.get('combo', False))}"),
                 InlineKeyboardButton("Ignore", callback_data="sw:no")]])
         if approval_id:
             text += f"\n\n⏳ Approve within {load_settings().approval.timeout_minutes} min, otherwise skipped."
@@ -210,7 +210,8 @@ class TelegramService:
                 await q.edit_message_text((q.message.text or "") + "\n\nIgnored.")
             else:
                 from ..shadow.engine import apply_switch
-                p = apply_switch({"lookback": int(parts[1]), "k": int(parts[2]), "gate_on": parts[3] == "1"})
+                p = apply_switch({"lookback": int(parts[1]), "k": int(parts[2]), "gate_on": parts[3] == "1",
+                                    "combo": len(parts) > 4 and parts[4] == "1"})
                 await q.edit_message_text((q.message.text or "") + f"\n\n✅ Live parameters now {p.label}")
             return
         aid = int(parts[1])

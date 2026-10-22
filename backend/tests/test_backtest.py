@@ -17,6 +17,12 @@ def test_backtest_runs_and_costs_reduce_return():
     assert summarize(paid)["stats"]["days"] > 0
 
 
+def test_combo_backtest_runs():
+    close, qv = make_panel(n=300, seed=4)
+    res = run_backtest(close, qv, set(close.columns), StrategyParams(combo=True), CostModel(0.001, 0.001))
+    assert len(res.returns) == 300 and res.equity.iloc[-1] > 0
+
+
 def test_gate_off_backtest_never_holds_when_btc_falls():
     close, qv = make_panel(n=200, btc_up=False, seed=5)
     res = run_backtest(close, qv, set(close.columns), StrategyParams(), CostModel(0.001, 0.001))
