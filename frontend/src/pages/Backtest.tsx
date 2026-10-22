@@ -2,6 +2,8 @@ import { useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, num, pct } from "../api";
 
+type Variant = { name: string; params: Record<string, unknown>; color: string };
+
 export default function Backtest() {
   const [source, setSource] = useState("binance");
   const [costs, setCosts] = useState("nobitex");
@@ -9,15 +11,33 @@ export default function Backtest() {
   const [k, setK] = useState(5);
   const [gate, setGate] = useState(true);
   const [combo, setCombo] = useState(false);
-  const [res, setRes] = useState<any>(null);
+  const [runs, setRuns] = useState<{ name: string; color: string; res: any }[]>([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const run = async () => {
+
+  const execute = async (variants: Variant[]) => {
     setBusy(true); setErr("");
-    try { setRes(await api("/backtest", { body: { source, costs, params: { lookback, k, gate_on: gate, combo } } })); } catch (e: any) { setErr(e.message); }
+    try {
+      const out = [];
+      for (const v of variants) out.push({ name: v.name, color: v.color, res: await api("/backtest", { body: { source, costs, params: v.params } }) });
+      setRuns(out);
+    } catch (e: any) { setErr(e.message); }
     setBusy(false);
   };
-  const merged = res ? res.equity.map((e: any, i: number) => ({ day: e.day, strategy: e.equity, btc: res.btc[i]?.equity })) : [];
+  const base = { k, gate_on: gate };
+  const run = () => execute([{ name: combo ? "7/14/30 combined" : `L${lookback}`, params: { ...base, lookback, combo }, color: "#34d399" }]);
+  const compare = () => execute([
+    { name: `L${lookback}`, params: { ...base, lookback, combo: false }, color: "#34d399" },
+    { name: "7/14/30 combined", params: { ...base, lookback, combo: true }, color: "#60a5fa" },
+  ]);
+
+  const first = runs[0]?.res;
+  const merged = first ? first.equity.map((e: any, i: number) => {
+    const row: any = { day: e.day, btc: first.btc[i]?.equity };
+    runs.forEach((r) => (row[r.name] = r.res.equity[i]?.equity));
+    return row;
+  }) : [];
+
   return (
     <div className="space-y-4">
       <div className="card flex flex-wrap items-end gap-3">
@@ -28,18 +48,22 @@ export default function Backtest() {
         <label className="text-xs"><input type="checkbox" checked={combo} onChange={(e) => setCombo(e.target.checked)} /> Combine 7/14/30</label>
         <label className="text-xs"><input type="checkbox" checked={gate} onChange={(e) => setGate(e.target.checked)} /> BTC gate</label>
         <button className="btn-primary" disabled={busy} onClick={run}>{busy ? "Running…" : "Run backtest"}</button>
+        <button className="btn" disabled={busy} onClick={compare}>Compare: L{lookback} vs 7/14/30 combined</button>
       </div>
       {err && <div className="card text-amber-400">{err}</div>}
-      {res && <>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[["All", res.stats], ["2022+", res.post2021]].map(([n, s]: any) => <div key={n} className="card"><div className="text-xs text-zinc-400">{n}</div>
-            <div>CAGR {pct(s.cagr)} · Sharpe {num(s.sharpe)}</div><div>Max DD {pct(s.max_dd)} · Vol {pct(s.vol)}</div></div>)}
-          <div className="card col-span-2"><div className="text-xs text-zinc-400">P&L contribution (sum of daily fractions)</div>
-            <div className="text-sm">{Object.entries(res.contrib).map(([a, b]: any) => `${a} ${num(b, 3)}`).join(" · ")}</div></div>
-        </div>
+      {runs.length > 0 && <>
+        <div className="card overflow-x-auto"><table className="w-full"><thead><tr><th>Strategy</th><th>CAGR</th><th>Sharpe</th><th>Max DD</th><th>Vol</th><th>2022+ CAGR</th><th>2022+ Sharpe</th><th>P&L: long / short / pos.fee / fees</th></tr></thead>
+          <tbody>{runs.map((r) => <tr key={r.name} className="border-t border-zinc-800">
+            <td style={{ color: r.color }}>{r.name}</td><td>{pct(r.res.stats.cagr)}</td><td>{num(r.res.stats.sharpe)}</td><td>{pct(r.res.stats.max_dd)}</td><td>{pct(r.res.stats.vol)}</td>
+            <td>{pct(r.res.post2021.cagr)}</td><td>{num(r.res.post2021.sharpe)}</td>
+            <td className="text-xs">{["long_pnl", "short_pnl", "position_fee", "fees"].map((x) => num(r.res.contrib[x], 3)).join(" / ")}</td></tr>)}</tbody></table></div>
         <div className="card h-72"><ResponsiveContainer><LineChart data={merged}><CartesianGrid stroke="#27272a" /><XAxis dataKey="day" stroke="#71717a" fontSize={11} /><YAxis scale="log" domain={["auto", "auto"]} stroke="#71717a" fontSize={11} />
-          <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46" }} /><Legend /><Line dataKey="strategy" stroke="#34d399" dot={false} /><Line dataKey="btc" stroke="#f59e0b" dot={false} /></LineChart></ResponsiveContainer></div>
-        <div className="card"><div className="mb-1 text-sm font-medium">Calendar years</div>{Object.entries(res.years).map(([y, v]: any) => <span key={y} className="mr-4 text-sm">{y}: <span className={v >= 0 ? "text-emerald-400" : "text-red-400"}>{pct(v)}</span></span>)}</div>
+          <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46" }} formatter={(v: any) => Number(v).toFixed(2)} /><Legend />
+          {runs.map((r) => <Line key={r.name} dataKey={r.name} stroke={r.color} dot={false} />)}<Line dataKey="btc" name="BTC" stroke="#f59e0b" dot={false} /></LineChart></ResponsiveContainer></div>
+        <div className="card"><div className="mb-1 text-sm font-medium">Calendar years</div>
+          <table className="w-full"><thead><tr><th>Year</th>{runs.map((r) => <th key={r.name}>{r.name}</th>)}</tr></thead>
+            <tbody>{Object.keys(first.years).map((y) => <tr key={y} className="border-t border-zinc-800"><td>{y}</td>
+              {runs.map((r) => { const v = r.res.years[y]; return <td key={r.name} className={v >= 0 ? "text-emerald-400" : "text-red-400"}>{pct(v)}</td>; })}</tr>)}</tbody></table></div>
       </>}
     </div>
   );
