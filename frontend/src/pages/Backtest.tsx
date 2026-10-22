@@ -101,9 +101,9 @@ export default function Backtest() {
       </div>
       {err && <div className="card text-amber-400">{err}</div>}
       {runs.length > 0 && <>
-        <div className="card overflow-x-auto"><table className="w-full"><thead><tr><th>Strategy</th><th>CAGR</th><th>Sharpe</th><th>Max DD</th><th>Vol</th><th>2022+ CAGR</th><th>2022+ Sharpe</th><th>P&L: long / short / pos.fee / fees</th></tr></thead>
+        <div className="card overflow-x-auto"><table className="w-full"><thead><tr><th>Strategy</th><th>Params used</th><th>CAGR</th><th>Sharpe</th><th>Max DD</th><th>Vol</th><th>2022+ CAGR</th><th>2022+ Sharpe</th><th>P&L: long / short / pos.fee / fees</th></tr></thead>
           <tbody>{runs.map((r) => <tr key={r.name} className="border-t border-zinc-800">
-            <td style={{ color: r.color }}>{r.name}</td><td>{pct(r.res.stats.cagr)}</td><td>{num(r.res.stats.sharpe)}</td><td>{pct(r.res.stats.max_dd)}</td><td>{pct(r.res.stats.vol)}</td>
+            <td style={{ color: r.color }}>{r.name}</td><td className="text-xs text-zinc-400" title={JSON.stringify(r.res.last_picks ?? {})}>{r.res.params_used ? `L${r.res.params_used.combo ? "7/14/30" : r.res.params_used.lookback} k${r.res.params_used.k}` : "?"}{r.res.last_picks ? ` · long ${r.res.last_picks.longs?.slice(0, 2).join(",")}…` : ""}</td><td>{pct(r.res.stats.cagr)}</td><td>{num(r.res.stats.sharpe)}</td><td>{pct(r.res.stats.max_dd)}</td><td>{pct(r.res.stats.vol)}</td>
             <td>{pct(r.res.post2021.cagr)}</td><td>{num(r.res.post2021.sharpe)}</td>
             <td className="text-xs">{["long_pnl", "short_pnl", "position_fee", "fees"].map((x) => num(r.res.contrib[x], 3)).join(" / ")}</td></tr>)}</tbody></table></div>
         {runs.filter((r) => r.res.macro).map((r) => (

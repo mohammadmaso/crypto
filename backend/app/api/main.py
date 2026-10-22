@@ -383,6 +383,9 @@ def _backtest(body: dict) -> dict:
     else:
         res = run_backtest(close, qv, short, p, cost, funding=fnd, start=start, end=end)
     out = summarize(res, label)
+    out["params_used"] = {k: getattr(p, k) for k in ("lookback", "combo", "k", "gate_on", "weighting", "exposure")}
+    d0 = res.returns.index[-1]
+    out["last_picks"] = _last_picks(close, qv, short, p, d0) if kind == "strategy" else None
     if kind in ("macro_rule", "macro_ml"):
         out["macro"] = macro_info
     out["source"], out["costs"] = source, cost_kind
@@ -391,6 +394,12 @@ def _backtest(body: dict) -> dict:
     step = max(1, len(btc_eq) // 600)
     out["btc"] = [{"day": str(d.date()), "equity": float(v)} for d, v in btc_eq.iloc[::step].items()]
     return out
+
+
+def _last_picks(close, qv, short, p, day) -> dict:
+    """Longs/shorts the signal chose on the last backtest day: a quick fingerprint that the parameters took effect."""
+    t = targets_for(features(close, qv, p), short, day, p)
+    return {"longs": t.longs, "shorts": t.shorts}
 
 
 def _macro_run(kind, close, qv, short, p, cost, fnd, start, end):
