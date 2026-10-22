@@ -1,0 +1,10 @@
+.env
+*.db
+*.db-journal
+__pycache__/
+.venv/
+node_modules/
+frontend/dist/
+logs/
+.pytest_cache/
+.DS_Store

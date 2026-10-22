@@ -1,0 +1,26 @@
+[project]
+name = "nobimomentum"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.11.3",
+    "cryptography>=50.0.2",
+    "fastapi>=0.161.0",
+    "httpx[socks]>=0.28.1",
+    "numpy>=2.5.4",
+    "pandas>=3.1.0",
+    "pyarrow>=26.0.0",
+    "pydantic-settings>=2.16.1",
+    "python-dotenv>=1.2.4",
+    "python-telegram-bot[socks]==21.*",
+    "sqlmodel>=0.0.48",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "respx>=0.23.1",
+]
