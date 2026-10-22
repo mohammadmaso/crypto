@@ -14,6 +14,7 @@ dependencies = [
     "pydantic-settings>=2.16.1",
     "python-dotenv>=1.2.4",
     "python-telegram-bot[socks]==21.*",
+    "scikit-learn>=1.9.1",
     "sqlmodel>=0.0.48",
     "uvicorn[standard]>=0.54.0",
 ]

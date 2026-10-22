@@ -43,7 +43,9 @@ def perf_stats(r: pd.Series) -> dict:
 
 def run_backtest(close: pd.DataFrame, qvol: pd.DataFrame, shortable, p: StrategyParams, cost: CostModel,
                  funding: pd.DataFrame | None = None, start=None, end=None, feats: Features | None = None,
-                 capital: float = 1.0) -> BacktestResult:
+                 capital: float = 1.0, overlay: pd.Series | None = None) -> BacktestResult:
+    """`overlay`: optional daily exposure multiplier in [0, 1] (macro/regime layer), applied to target weights on
+    each sleeve's rebalance day. It must already be lagged so that it only uses information known at that close."""
     f = feats or features(close, qvol, p)
     days = f.close.loc[start:end].index
     px_all = f.close.ffill()
@@ -71,8 +73,10 @@ def run_backtest(close: pd.DataFrame, qvol: pd.DataFrame, shortable, p: Strategy
             if not sleeve_rebalances_on(i, k, p):
                 continue
             t = targets_for(f, shortable, day, p)
+            mult = float(overlay.get(day, 1.0)) if overlay is not None else 1.0
+            weights = {s: w * mult for s, w in t.weights.items()}
             eq = sl.equity(prices)
-            for fl in rebalance(sl, target_quantities(t.weights, eq, prices), prices, cost):
+            for fl in rebalance(sl, target_quantities(weights, eq, prices), prices, cost):
                 fe += fl.fee
         eq_total = sum(sl.equity(prices) for sl in sleeves)
         rets.append(eq_total / prev_eq - 1 if prev_px is not None else 0.0)

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api, num, pct } from "../api";
 
@@ -17,6 +17,8 @@ const PRESETS: { id: string; name: string; note: string; params: Record<string, 
   { id: "invvol", name: "L14 k5 inverse-vol", note: "PDF §8: less risk", params: { lookback: 14, k: 5, gate_on: true, weighting: "invvol" } },
   { id: "exp60", name: "L14 k5 at 60% exposure", note: "PDF §8: cap risk", params: { lookback: 14, k: 5, gate_on: true, exposure: 0.6 } },
   { id: "longonly", name: "Long-only top-5 gated", note: "no shorts (no position fee)", params: { lookback: 14, k: 5, gate_on: true, long_frac: 1, short_frac: 0 } },
+  { id: "macrorule", name: "Macro rule overlay (no ML)", note: "L14 k5; cuts size on VIX / dollar / yield / vol / sentiment stress", params: { lookback: 14, k: 5, gate_on: true }, kind: "macro_rule" },
+  { id: "macroml", name: "Macro ML overlay (walk-forward)", note: "L14 k5; logistic model sizes the book, out-of-sample only", params: { lookback: 14, k: 5, gate_on: true }, kind: "macro_ml" },
   { id: "random", name: "Random picks (null)", note: "same rules, random coins: is it skill?", params: { lookback: 14, k: 5, gate_on: true }, kind: "random" },
   { id: "btctrend", name: "BTC trend only", note: "hold BTC only above SMA100", params: {}, kind: "btc_trend" },
   { id: "btchold", name: "BTC buy & hold", note: "benchmark", params: {}, kind: "btc_hold" },
@@ -35,6 +37,14 @@ export default function Backtest() {
 
   const [picked, setPicked] = useState<string[]>(["spec", "combo5", "btctrend", "btchold"]);
   const [progress, setProgress] = useState("");
+  const [macro, setMacro] = useState<any>(null);
+  const [macroMsg, setMacroMsg] = useState("");
+  const loadMacro = () => api("/macro/status").then(setMacro).catch(() => setMacro(null));
+  useEffect(() => { loadMacro(); }, []);
+  const syncMacro = async () => {
+    setMacroMsg("Downloading…");
+    try { const r = await api("/macro/sync", { method: "POST", body: {} }); setMacroMsg(JSON.stringify(r)); loadMacro(); } catch (e: any) { setMacroMsg(e.message); }
+  };
   const execute = async (variants: Variant[]) => {
     setBusy(true); setErr("");
     try {
@@ -81,6 +91,13 @@ export default function Backtest() {
           <button className="btn" onClick={() => setPicked([])}>None</button>
           <span className="text-xs text-zinc-400">{progress}</span>
         </div>
+        <div className="border-t border-zinc-800 pt-2 text-xs text-zinc-400">
+          Macro data (VIX, US dollar, 10y yield, Fear &amp; Greed – free, via the research-data proxy in Settings):{" "}
+          {macro && Object.keys(macro).filter((k) => k !== "missing" && k !== "checked").length > 0
+            ? Object.entries(macro).filter(([k]) => k !== "missing" && k !== "checked").map(([k, v]: any) => `${k} ${v.rows} rows to ${v.last}`).join(" · ")
+            : "not downloaded"}
+          {" "}<button className="btn ml-2" onClick={syncMacro}>Download macro data</button> <span className="break-all">{macroMsg}</span>
+        </div>
       </div>
       {err && <div className="card text-amber-400">{err}</div>}
       {runs.length > 0 && <>
@@ -89,6 +106,12 @@ export default function Backtest() {
             <td style={{ color: r.color }}>{r.name}</td><td>{pct(r.res.stats.cagr)}</td><td>{num(r.res.stats.sharpe)}</td><td>{pct(r.res.stats.max_dd)}</td><td>{pct(r.res.stats.vol)}</td>
             <td>{pct(r.res.post2021.cagr)}</td><td>{num(r.res.post2021.sharpe)}</td>
             <td className="text-xs">{["long_pnl", "short_pnl", "position_fee", "fees"].map((x) => num(r.res.contrib[x], 3)).join(" / ")}</td></tr>)}</tbody></table></div>
+        {runs.filter((r) => r.res.macro).map((r) => (
+          <div key={r.name} className="card text-xs text-zinc-300">
+            <b>{r.name}</b>: features {r.res.macro.features?.join(", ")} · avg exposure {num(r.res.macro.avg_exposure)}
+            {r.res.macro.oos_auc !== undefined && <> · out-of-sample AUC {r.res.macro.oos_auc == null ? "n/a" : num(r.res.macro.oos_auc, 3)} over {r.res.macro.oos_days_evaluated} days (0.50 = no skill)</>}
+            {" "}· base Sharpe without overlay {num(r.res.macro.base_sharpe)}
+          </div>))}
         <div className="card h-72"><ResponsiveContainer><LineChart data={merged}><CartesianGrid stroke="#27272a" /><XAxis dataKey="day" stroke="#71717a" fontSize={11} /><YAxis scale="log" domain={["auto", "auto"]} stroke="#71717a" fontSize={11} />
           <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46" }} formatter={(v: any) => Number(v).toFixed(2)} /><Legend />
           {runs.map((r) => <Line key={r.name} dataKey={r.name} stroke={r.color} dot={false} />)}<Line dataKey="btc" name="BTC" stroke="#f59e0b" dot={false} /></LineChart></ResponsiveContainer></div>

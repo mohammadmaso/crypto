@@ -64,6 +64,20 @@ reconciliation block. Gate off → close everything, hold USDT.
 `NOBI_RESEARCH_DATA`) or stored Nobitex candles, with Nobitex or Binance cost models. The golden comparison against
 `ls_study.pkl` (L14 k5, 1e-6) still needs those files; they are not in this repo, so it has not been run.
 
+## Macro / regime overlay (backtest only, experimental)
+Two overlays size the existing long-short book up or down; they never pick coins and the BTC gate still decides
+whether to trade. Data (free, no keys): VIX, broad US dollar, US 10y yield (FRED) and the crypto Fear & Greed index,
+plus BTC trend/volatility, market breadth and momentum dispersion computed from candles. Macro series are lagged a
+day and z-scores are expanding, so nothing looks ahead.
+* **Rule overlay (no ML):** each stress flag (VIX spike, dollar surge, yield surge, BTC volatility, sentiment
+  collapse; z > 1.5) cuts exposure by 25 %, floor 25 %.
+* **ML overlay:** walk-forward logistic regression predicting whether the base strategy's next 5-day return is
+  positive; refit every 30 days on labels at least 5 days old; shows out-of-sample AUC (0.50 = no skill).
+Backtest page → "Download macro data", then tick the two macro presets. The data downloads have **not** been tested
+against the live endpoints (the build sandbox had no access). The PDF's own ML tests did not beat the simple rule, so
+treat a good-looking result with suspicion until it also holds on data collected after today. Not wired into live
+trading or the shadow books.
+
 ## Tests
 `cd backend && uv run pytest -q` – signing round-trip, signal edge cases, tranche schedule, order planner, approval
 timeout, catch-up window, paper-mode daily run (trade / gate off / stale data / kill), backtest.
