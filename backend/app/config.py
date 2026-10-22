@@ -59,11 +59,17 @@ class StrategyParams(BaseModel):
     tranches: int = 3
     long_frac: float = 0.5
     short_frac: float = 0.5
+    weighting: Literal["equal", "invvol"] = "equal"   # inverse-volatility weights within each leg (PDF section 8)
+    exposure: float = 1.0        # scales both legs, e.g. 0.6 = 60% of capital in the market
+    selection: Literal["momentum", "random"] = "momentum"   # "random" is the null benchmark only
+    seed: int = 0
     min_shorts: int = 3          # fewer shortable names than this -> hold USDT (stay market-neutral)
 
     @property
     def label(self) -> str:
-        return f"{'L7/14/30' if self.combo else f'L{self.lookback}'} k{self.k} {'gated' if self.gate_on else 'always-on'}"
+        extra = (" invvol" if self.weighting == "invvol" else "") + (f" x{self.exposure:g}" if self.exposure != 1 else "") \
+            + (" LONG-ONLY" if self.short_frac == 0 else "") + (" RANDOM" if self.selection == "random" else "")
+        return f"{'L7/14/30' if self.combo else f'L{self.lookback}'} k{self.k}{extra} {'gated' if self.gate_on else 'always-on'}"
 
 
 class RiskLimits(BaseModel):

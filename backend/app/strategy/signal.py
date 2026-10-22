@@ -23,6 +23,7 @@ class Features:
     mom: pd.DataFrame
     volrank: pd.DataFrame      # trailing mean quote volume (NaN where ineligible by history)
     gate: pd.Series            # BTC close > SMA(n)
+    vol: pd.DataFrame | None = None   # 30d std of daily returns (only when weighting="invvol")
     moms: dict[int, pd.DataFrame] = field(default_factory=dict)   # one momentum frame per combo lookback
 
 
@@ -48,7 +49,8 @@ def features(close: pd.DataFrame, qvol: pd.DataFrame, p: StrategyParams) -> Feat
     else:
         gate = pd.Series(False, index=close.index)
     moms = {L: close / close.shift(L) - 1 for L in COMBO_LOOKBACKS} if p.combo else {}
-    return Features(close=close, mom=mom, volrank=vol, gate=gate, moms=moms)
+    risk = close.pct_change().rolling(30, min_periods=20).std() if p.weighting == "invvol" else None
+    return Features(close=close, mom=mom, volrank=vol, gate=gate, moms=moms, vol=risk)
 
 
 def combo_score(f: Features, day, eligible: list[str]) -> pd.Series:
@@ -92,19 +94,33 @@ def targets_for(f: Features, shortable, day, p: StrategyParams) -> Targets:
     else:
         mom = f.mom.loc[day, eligible].dropna()
     ranked = mom.sort_values(ascending=False, kind="mergesort")
+    if p.selection == "random" and not ranked.empty:      # null benchmark: same universe, random order
+        rng = np.random.default_rng([p.seed, day.toordinal()])
+        ranked = ranked.iloc[rng.permutation(len(ranked))]
     out.ranked = [(s, float(m)) for s, m in ranked.items()]
     if not gate or ranked.empty:
         return out
     longs = list(ranked.index[: p.k])
-    shorts = [s for s in reversed(ranked.index) if s not in longs and is_shortable(shortable, s, day)][: p.k]
-    if len(shorts) < min(p.min_shorts, p.k):
+    shorts = [s for s in reversed(ranked.index) if s not in longs and is_shortable(shortable, s, day)][: p.k] \
+        if p.short_frac > 0 else []
+    if p.short_frac > 0 and len(shorts) < min(p.min_shorts, p.k):
         return out          # cannot stay market-neutral: hold cash rather than run a one-sided book
     out.longs, out.shorts = longs, shorts
-    for s in longs:
-        out.weights[s] = p.long_frac / len(longs)
-    for s in shorts:
-        out.weights[s] = -p.short_frac / len(shorts)
+    for names, frac, sign in ((longs, p.long_frac, 1), (shorts, p.short_frac, -1)):
+        for s, w in _leg_weights(f, day, names, frac * p.exposure, p).items():
+            out.weights[s] = sign * w
     return out
+
+
+def _leg_weights(f: Features, day, names: list[str], frac: float, p: StrategyParams) -> dict[str, float]:
+    if not names or frac <= 0:
+        return {}
+    if p.weighting == "invvol" and f.vol is not None:
+        v = f.vol.loc[day, names]
+        if v.notna().all() and (v > 0).all():
+            inv = 1.0 / v
+            return {s: float(frac * inv[s] / inv.sum()) for s in names}
+    return {s: frac / len(names) for s in names}
 
 
 def sleeve_rebalances_on(day_index: int, sleeve: int, p: StrategyParams) -> bool:

@@ -94,11 +94,11 @@ def yearly(r: pd.Series) -> dict[str, float]:
     return {str(y): float((1 + g).prod() - 1) for y, g in r.groupby(r.index.year)}
 
 
-def summarize(res: BacktestResult) -> dict:
+def summarize(res: BacktestResult, label: str | None = None) -> dict:
     r = res.returns
     eq = (1 + r).cumprod()
     return {
-        "label": res.params.label,
+        "label": label or res.params.label,
         "stats": perf_stats(r),
         "post2021": perf_stats(r.loc["2022":]),
         "years": yearly(r),
@@ -109,3 +109,31 @@ def summarize(res: BacktestResult) -> dict:
 
 def np_safe(x):
     return None if x is None or (isinstance(x, float) and not np.isfinite(x)) else x
+
+
+def _from_returns(r: pd.Series, p: StrategyParams, gate: pd.Series) -> BacktestResult:
+    eq = (1 + r).cumprod()
+    zeros = pd.DataFrame(0.0, index=r.index, columns=["long_pnl", "short_pnl", "funding", "position_fee", "fees"])
+    zeros["long_pnl"] = r
+    return BacktestResult(params=p, returns=r, equity=eq, breakdown=zeros, gate=gate)
+
+
+def btc_baseline(close: pd.DataFrame, p: StrategyParams, cost: CostModel, trend: bool, start=None, end=None) -> BacktestResult:
+    """BTC buy-and-hold, or BTC held only while it is above its SMA (PDF section 4-4). Costs on each switch."""
+    btc = close["BTCUSDT"].ffill()
+    gate = btc > btc.rolling(p.gate_sma, min_periods=p.gate_sma).mean()
+    ret = btc.pct_change().fillna(0.0)
+    if trend:
+        pos = gate.shift(1, fill_value=False).astype(float)          # signal at close t, held over day t+1
+        ret = ret * pos - pos.diff().abs().fillna(0.0) * cost.long_side
+    return _from_returns(ret.loc[start:end], p, gate.loc[start:end])
+
+
+def random_median(close, qvol, shortable, p: StrategyParams, cost: CostModel, funding=None, start=None, end=None,
+                  seeds: int = 5) -> BacktestResult:
+    """Same strategy with random picks; returns the run with the median final equity (null benchmark)."""
+    f = features(close, qvol, p)
+    runs = [run_backtest(close, qvol, shortable, p.model_copy(update={"selection": "random", "seed": s}), cost,
+                         funding=funding, start=start, end=end, feats=f) for s in range(seeds)]
+    runs.sort(key=lambda x: x.equity.iloc[-1])
+    return runs[len(runs) // 2]

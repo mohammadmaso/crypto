@@ -348,7 +348,7 @@ async def backtest(body: dict = Body(default={})):
 
 def _backtest(body: dict) -> dict:
     from ..backtest import binance_data
-    from ..backtest.run import run_backtest, summarize
+    from ..backtest.run import btc_baseline, random_median, run_backtest, summarize
     from ..strategy.book import CostModel
     st = load_settings()
     p = StrategyParams.model_validate(st.strategy.model_dump() | (body.get("params") or {}))
@@ -361,16 +361,25 @@ def _backtest(body: dict) -> dict:
             raise HTTPException(409, "Binance research data not found in ~/kronos_iran/crypto")
         close, qv, fund = binance_data.load()
         close = clean_glitches(close)
-        res = run_backtest(close, qv, fund.notna(), p, cost, funding=fund if cost_kind == "binance" else None,
-                           start=body.get("start", "2020-01-03"), end=body.get("end"))
+        short, fnd, start = fund.notna(), (fund if cost_kind == "binance" else None), body.get("start", "2020-01-03")
     else:
         close, qv = candles.panel()
         if close.empty:
             raise HTTPException(409, "No Nobitex candles stored yet. Press Sync first.")
         from ..data.markets import cached
         close = clean_glitches(close)
-        res = run_backtest(close, qv, cached().shortable(), p, cost, start=body.get("start"), end=body.get("end"))
-    out = summarize(res)
+        short, fnd, start = cached().shortable(), None, body.get("start")
+    kind, end = body.get("kind", "strategy"), body.get("end")
+    label = body.get("name")
+    if kind in ("btc_hold", "btc_trend"):
+        res = btc_baseline(close, p, cost, kind == "btc_trend", start=start, end=end)
+        label = label or ("BTC trend only" if kind == "btc_trend" else "BTC buy & hold")
+    elif kind == "random":
+        res = random_median(close, qv, short, p, cost, funding=fnd, start=start, end=end)
+        label = label or "Random picks (median of 5)"
+    else:
+        res = run_backtest(close, qv, short, p, cost, funding=fnd, start=start, end=end)
+    out = summarize(res, label)
     out["source"], out["costs"] = source, cost_kind
     btc = close["BTCUSDT"].reindex(res.returns.index).ffill()
     btc_eq = btc / btc.iloc[0]
