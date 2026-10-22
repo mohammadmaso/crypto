@@ -80,6 +80,8 @@ def targets_for(f: Features, shortable, day, p: StrategyParams) -> Targets:
         return out
     longs = list(ranked.index[: p.k])
     shorts = [s for s in reversed(ranked.index) if s not in longs and is_shortable(shortable, s, day)][: p.k]
+    if len(shorts) < min(p.min_shorts, p.k):
+        return out          # cannot stay market-neutral: hold cash rather than run a one-sided book
     out.longs, out.shorts = longs, shorts
     for s in longs:
         out.weights[s] = p.long_frac / len(longs)

@@ -35,10 +35,10 @@ def test_fewer_than_k_shortable():
     f = features(close, qv, p)
     f.gate[:] = True
     day = close.index[-1]
-    shortable = set(f.mom.loc[day].sort_values().index[:2]) - {"BTCUSDT"}
+    shortable = set([s for s in f.mom.loc[day].sort_values().index if s != "BTCUSDT"][:3])
     t = targets_for(f, shortable, day, p)
     assert set(t.shorts) <= shortable
-    assert len(t.shorts) <= 2
+    assert len(t.shorts) <= 3
     if t.shorts:   # short weight is split across the shorts found
         assert abs(sum(w for w in t.weights.values() if w < 0) + 0.5) < 1e-12
 
@@ -65,3 +65,15 @@ def test_tranche_schedule_staggered():
 
 def test_twelve_variants():
     assert len(all_variants()) == 12
+
+
+def test_too_few_shortable_holds_cash():
+    close, qv = make_panel()
+    p = StrategyParams()
+    f = features(close, qv, p)
+    f.gate[:] = True
+    day = close.index[-1]
+    only_two = set(f.mom.loc[day].sort_values().index[:3]) - {"BTCUSDT"}
+    only_two = set(list(only_two)[:2])
+    t = targets_for(f, only_two, day, p)
+    assert t.weights == {} and t.shorts == []

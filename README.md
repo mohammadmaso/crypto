@@ -51,11 +51,11 @@ contacted directly (no proxy) unless you set one.
 ## Self-optimisation (shadow variants)
 Live parameters never change on their own (STRATEGY §7). The 12 variants (lookback 7/14/30 × k 3/5 × gate on/off)
 run as forward paper books with Nobitex costs. A switch is suggested only after 90 days and a Sharpe/return margin,
-and applied only when you approve it (Shadow page). A weekly check also flags a short leg that is net-negative
+and applied only when you approve it (Shadow page, or the button on the weekly Telegram suggestion). A weekly check also flags a short leg that is net-negative
 after position fees.
 
 ## Risk layer
-Gross ≤ 100 %, ≤ 25 % of a sleeve per coin, shorts 1x with collateral moved to the margin wallet first, liquidity
+Fewer than 3 shortable coins → hold USDT (never a one-sided book). Gross ≤ 100 %, ≤ 25 % of a sleeve per coin, shorts 1x with collateral moved to the margin wallet first, liquidity
 filter (order-book slippage ≤ 0.3 %), minimum order size, stale-data block, −25 % drawdown kill (flatten + pause),
 reconciliation block. Gate off → close everything, hold USDT.
 

@@ -58,6 +58,7 @@ class StrategyParams(BaseModel):
     tranches: int = 3
     long_frac: float = 0.5
     short_frac: float = 0.5
+    min_shorts: int = 3          # fewer shortable names than this -> hold USDT (stay market-neutral)
 
     @property
     def label(self) -> str:

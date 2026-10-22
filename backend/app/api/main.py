@@ -337,12 +337,8 @@ def shadow():
 @app.post("/api/shadow/apply")
 def shadow_apply(body: dict = Body(...)):
     """User-approved switch of the live parameters to a shadow variant."""
-    st = load_settings()
-    st.strategy = st.strategy.model_copy(update={k: body[k] for k in ("lookback", "k", "gate_on") if k in body})
-    save_settings(st)
-    from ..db import add_alert
-    add_alert("info", "params_switched", f"Live parameters switched to {st.strategy.label} (user approved)")
-    return st.strategy.model_dump()
+    from ..shadow.engine import apply_switch
+    return apply_switch(body).model_dump()
 
 
 @app.post("/api/backtest")

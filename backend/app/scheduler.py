@@ -70,5 +70,8 @@ class Scheduler:
         from .shadow.engine import weekly_check
         if st.telegram.shadow_updates:
             await self.tg.notify(leaderboard_text(st), kind="shadow")
+        from .shadow.engine import suggestion
+        sug = suggestion(st)
         for m in weekly_check(st):
-            await self.tg.notify(m, kind="shadow")
+            switch = sug["params"] if sug and m.startswith("🧪 Shadow suggestion") else None
+            await self.tg.notify(m, kind="shadow", switch=switch)

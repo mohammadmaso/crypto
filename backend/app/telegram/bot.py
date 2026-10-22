@@ -83,7 +83,8 @@ class TelegramService:
             await self._stop()
 
     # ---------- outbound ----------
-    async def notify(self, text: str, kind: str = "info", approval_id: int | None = None) -> None:
+    async def notify(self, text: str, kind: str = "info", approval_id: int | None = None,
+                     switch: dict | None = None) -> None:
         st = load_settings().telegram
         if self.app is None or not st.chat_id:
             return
@@ -92,6 +93,11 @@ class TelegramService:
         if kind == "shadow" and not st.shadow_updates:
             return
         markup = self._approval_markup(approval_id) if approval_id else None
+        if switch:
+            markup = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Switch live parameters",
+                                     callback_data=f"sw:{switch['lookback']}:{switch['k']}:{int(switch['gate_on'])}"),
+                InlineKeyboardButton("Ignore", callback_data="sw:no")]])
         if approval_id:
             text += f"\n\n⏳ Approve within {load_settings().approval.timeout_minutes} min, otherwise skipped."
         try:
@@ -198,6 +204,14 @@ class TelegramService:
                 asyncio.create_task(self.engine.kill("telegram"))
             else:
                 await q.edit_message_text("Cancelled.")
+            return
+        if parts[0] == "sw":
+            if parts[1] == "no":
+                await q.edit_message_text((q.message.text or "") + "\n\nIgnored.")
+            else:
+                from ..shadow.engine import apply_switch
+                p = apply_switch({"lookback": int(parts[1]), "k": int(parts[2]), "gate_on": parts[3] == "1"})
+                await q.edit_message_text((q.message.text or "") + f"\n\n✅ Live parameters now {p.label}")
             return
         aid = int(parts[1])
         if parts[0] == "tg":

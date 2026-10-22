@@ -122,6 +122,16 @@ def suggestion(st: Settings) -> dict | None:
     return None
 
 
+def apply_switch(params: dict) -> StrategyParams:
+    """User-approved switch of the live parameters (Shadow page or Telegram button)."""
+    from ..db import load_settings, save_settings
+    st = load_settings()
+    st.strategy = st.strategy.model_copy(update={k: params[k] for k in ("lookback", "k", "gate_on") if k in params})
+    save_settings(st)
+    add_alert("info", "params_switched", f"Live parameters switched to {st.strategy.label} (user approved)")
+    return st.strategy
+
+
 def short_leg_check(days: int = 90) -> dict | None:
     """Is the live short leg (price P&L minus position fees) net negative over the last `days`?"""
     pts = [p for p in books.equity_series(books.LIVE) if p.day >= date.today() - timedelta(days=days)]
