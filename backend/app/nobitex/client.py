@@ -70,7 +70,8 @@ class NobitexClient:
     def __init__(self, base_url: str, secrets: Secrets | None = None, proxy: str | None = None, timeout: float = 20.0):
         self.base_url = base_url.rstrip("/")
         self.secrets = secrets or Secrets()
-        self._http = httpx.AsyncClient(base_url=self.base_url, timeout=timeout, proxy=proxy or None,
+        # trust_env=False: ignore HTTP(S)_PROXY from the shell; a proxy is used only if set in Settings
+        self._http = httpx.AsyncClient(base_url=self.base_url, timeout=timeout, proxy=proxy or None, trust_env=False,
                                        headers={"User-Agent": USER_AGENT})
         self._orders = _Bucket(capacity=280, per_seconds=600)
 

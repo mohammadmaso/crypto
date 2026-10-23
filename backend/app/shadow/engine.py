@@ -99,8 +99,8 @@ def leaderboard(st: Settings) -> list[dict]:
     for v in all_variants():
         pts = books.equity_series(book_name(v))
         s = _stats(pts)
-        rows.append({"label": v.label, "params": v.model_dump(include={"lookback", "k", "gate_on"}),
-                     "live": v.lookback == st.strategy.lookback and v.k == st.strategy.k and v.gate_on == st.strategy.gate_on,
+        rows.append({"label": v.label, "params": v.model_dump(include={"lookback", "k", "gate_on", "combo"}),
+                     "live": v.combo == st.strategy.combo and (v.combo or v.lookback == st.strategy.lookback) and v.k == st.strategy.k and v.gate_on == st.strategy.gate_on,
                      "start": str(pts[0].day) if pts else None, **s,
                      "equity": [{"day": str(p.day), "equity": p.equity} for p in pts]})
     rows.sort(key=lambda r: -r["sharpe"])
@@ -120,6 +120,16 @@ def suggestion(st: Settings) -> dict | None:
                 "why": f"{best['days']}d forward: Sharpe {best['sharpe']:.2f} vs {live['sharpe']:.2f}, "
                        f"return {best['return']:.1%} vs {live['return']:.1%}"}
     return None
+
+
+def apply_switch(params: dict) -> StrategyParams:
+    """User-approved switch of the live parameters (Shadow page or Telegram button)."""
+    from ..db import load_settings, save_settings
+    st = load_settings()
+    st.strategy = st.strategy.model_copy(update={k: params[k] for k in ("lookback", "k", "gate_on", "combo") if k in params})
+    save_settings(st)
+    add_alert("info", "params_switched", f"Live parameters switched to {st.strategy.label} (user approved)")
+    return st.strategy
 
 
 def short_leg_check(days: int = 90) -> dict | None:

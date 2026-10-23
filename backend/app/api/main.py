@@ -337,12 +337,8 @@ def shadow():
 @app.post("/api/shadow/apply")
 def shadow_apply(body: dict = Body(...)):
     """User-approved switch of the live parameters to a shadow variant."""
-    st = load_settings()
-    st.strategy = st.strategy.model_copy(update={k: body[k] for k in ("lookback", "k", "gate_on") if k in body})
-    save_settings(st)
-    from ..db import add_alert
-    add_alert("info", "params_switched", f"Live parameters switched to {st.strategy.label} (user approved)")
-    return st.strategy.model_dump()
+    from ..shadow.engine import apply_switch
+    return apply_switch(body).model_dump()
 
 
 @app.post("/api/backtest")
@@ -352,7 +348,7 @@ async def backtest(body: dict = Body(default={})):
 
 def _backtest(body: dict) -> dict:
     from ..backtest import binance_data
-    from ..backtest.run import run_backtest, summarize
+    from ..backtest.run import btc_baseline, random_median, run_backtest, summarize
     from ..strategy.book import CostModel
     st = load_settings()
     p = StrategyParams.model_validate(st.strategy.model_dump() | (body.get("params") or {}))
@@ -365,22 +361,100 @@ def _backtest(body: dict) -> dict:
             raise HTTPException(409, "Binance research data not found in ~/kronos_iran/crypto")
         close, qv, fund = binance_data.load()
         close = clean_glitches(close)
-        res = run_backtest(close, qv, fund.notna(), p, cost, funding=fund if cost_kind == "binance" else None,
-                           start=body.get("start", "2020-01-03"), end=body.get("end"))
+        short, fnd, start = fund.notna(), (fund if cost_kind == "binance" else None), body.get("start", "2020-01-03")
     else:
         close, qv = candles.panel()
         if close.empty:
             raise HTTPException(409, "No Nobitex candles stored yet. Press Sync first.")
         from ..data.markets import cached
         close = clean_glitches(close)
-        res = run_backtest(close, qv, cached().shortable(), p, cost, start=body.get("start"), end=body.get("end"))
-    out = summarize(res)
+        short, fnd, start = cached().shortable(), None, body.get("start")
+    kind, end = body.get("kind", "strategy"), body.get("end")
+    label = body.get("name")
+    if kind in ("btc_hold", "btc_trend"):
+        res = btc_baseline(close, p, cost, kind == "btc_trend", start=start, end=end)
+        label = label or ("BTC trend only" if kind == "btc_trend" else "BTC buy & hold")
+    elif kind in ("macro_rule", "macro_ml"):
+        res, macro_info = _macro_run(kind, close, qv, short, p, cost, fnd, start, end)
+        label = label or ("Macro rule overlay" if kind == "macro_rule" else "Macro ML overlay")
+    elif kind == "random":
+        res = random_median(close, qv, short, p, cost, funding=fnd, start=start, end=end)
+        label = label or "Random picks (median of 5)"
+    else:
+        res = run_backtest(close, qv, short, p, cost, funding=fnd, start=start, end=end)
+    out = summarize(res, label)
+    out["params_used"] = {k: getattr(p, k) for k in ("lookback", "combo", "k", "gate_on", "weighting", "exposure")}
+    d0 = res.returns.index[-1]
+    out["last_picks"] = _last_picks(close, qv, short, p, d0) if kind == "strategy" else None
+    if kind in ("macro_rule", "macro_ml"):
+        out["macro"] = macro_info
     out["source"], out["costs"] = source, cost_kind
     btc = close["BTCUSDT"].reindex(res.returns.index).ffill()
     btc_eq = btc / btc.iloc[0]
     step = max(1, len(btc_eq) // 600)
     out["btc"] = [{"day": str(d.date()), "equity": float(v)} for d, v in btc_eq.iloc[::step].items()]
     return out
+
+
+def _last_picks(close, qv, short, p, day) -> dict:
+    """Longs/shorts the signal chose on the last backtest day: a quick fingerprint that the parameters took effect."""
+    t = targets_for(features(close, qv, p), short, day, p)
+    return {"longs": t.longs, "shorts": t.shorts}
+
+
+def _macro_run(kind, close, qv, short, p, cost, fnd, start, end):
+    from ..backtest.run import run_backtest
+    from ..macro import data as macro_data
+    from ..macro.features import build
+    from ..macro.regime import ml_overlay, rule_overlay
+    macro = macro_data.load()
+    if not macro:
+        raise HTTPException(409, "Macro data not downloaded yet. Press 'Download macro data' on the Backtest page.")
+    f = features(close, qv, p)
+    feat = build(f, macro)
+    base = run_backtest(close, qv, short, p, cost, funding=fnd, start=start, end=end, feats=f)
+    feat = feat.reindex(base.returns.index)
+    if kind == "macro_rule":
+        expo = rule_overlay(feat)
+        info = {"features": [c for c in feat.columns if feat[c].notna().any()], "avg_exposure": float(expo.mean())}
+    else:
+        expo, info = ml_overlay(feat, base.returns, base.gate)
+    res = run_backtest(close, qv, short, p, cost, funding=fnd, start=start, end=end, feats=f, overlay=expo)
+    info["base_sharpe"] = base.stats()["sharpe"]
+    info["series"] = sorted(macro)
+    return res, info
+
+
+@app.post("/api/macro/sync")
+async def macro_sync():
+    from ..macro import data as macro_data
+    st = load_settings()
+    return await asyncio.to_thread(macro_data.sync, st.binance_proxy_url or None)
+
+
+@app.get("/api/macro/status")
+def macro_status():
+    from ..macro import data as macro_data
+    return macro_data.status()
+
+
+@app.get("/api/macro/regime")
+def macro_regime():
+    """Today's regime flags and the exposure multiplier the rule overlay would apply (uses stored Nobitex candles)."""
+    from ..macro import data as macro_data
+    from ..macro.features import build
+    from ..macro.regime import rule_flags, rule_overlay
+    st = load_settings()
+    close, qv = candles.panel()
+    if close.empty:
+        raise HTTPException(409, "No candles yet.")
+    f = features(clean_glitches(close), qv, st.strategy)
+    feat = build(f, macro_data.load())
+    flags = rule_flags(feat)
+    last = flags.iloc[-1] if not flags.empty else {}
+    return {"day": str(feat.index[-1].date()), "exposure": float(rule_overlay(feat).iloc[-1]),
+            "flags": {k: bool(v) for k, v in dict(last).items()},
+            "features": {k: (None if v != v else float(v)) for k, v in feat.iloc[-1].items()}}
 
 
 # ---------------- static frontend ----------------

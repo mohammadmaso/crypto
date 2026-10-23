@@ -8,3 +8,6 @@ frontend/dist/
 logs/
 .pytest_cache/
 .DS_Store
+
+var/
+logs/
